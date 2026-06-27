@@ -216,6 +216,25 @@
   </div>
 </div>
 
+<!-- Lessons Modal -->
+<div class="modal-overlay" id="lessonsOverlay">
+  <div class="modal" style="max-width:680px;">
+    <h2 id="lessonsTitle">📝 上课记录</h2>
+    <div class="result-summary" id="lessonsSummary"></div>
+    <div id="lessonsTableArea"></div>
+    <div class="result-add-row">
+      <div class="mini-field"><label>日期 *</label><input type="date" id="lDate"></div>
+      <div class="mini-field"><label>上课人 *</label><input type="text" id="lTeacher" placeholder="谁去上的" class="wider"></div>
+      <div class="mini-field"><label>时长</label><input type="text" id="lDuration" placeholder="如：2小时"></div>
+      <div class="mini-field"><label>备注</label><input type="text" id="lNotes" placeholder="内容、反馈等"></div>
+      <button class="btn btn-primary btn-sm" onclick="addLesson()" style="align-self:flex-end;">＋ 添加</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeLessonsModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -294,7 +313,7 @@ function addLog(action, jobId, detail) {
 
 // ==================== CRUD ====================
 async function addJob(data) {
-  const job = { ...data, id: genId(), createdAt: now(), updatedAt: now(), results: [] };
+  const job = { ...data, id: genId(), createdAt: now(), updatedAt: now(), results: [], lessons: [] };
   jobs.unshift(job);
   addLog('创建', job.id, `新建「${job.subject}」${job.gradeLevel} ${job.studentName||'未填姓名'}`);
   saveToLS(); await saveToCloud();
@@ -308,7 +327,7 @@ async function updateJob(id, updates) {
     if ((old[key]||'') !== (updates[key]||'')) changes.push(`${key}: "${old[key]||''}" → "${updates[key]||''}"`);
   }
   if (changes.length === 0) return;
-  jobs[idx] = { ...old, ...updates, updatedAt: now(), results: old.results || [] };
+  jobs[idx] = { ...old, ...updates, updatedAt: now(), results: old.results || [], lessons: old.lessons || [] };
   addLog('编辑', id, changes.join('；'));
   saveToLS(); await saveToCloud();
 }
@@ -378,6 +397,62 @@ async function deleteResult(resultId) {
   renderResultsTable(); renderAll(); toast('成绩已删除');
 }
 
+// ==================== Lessons ====================
+let viewingLessonsJobId = null;
+function openLessonsModal(jobId) {
+  viewingLessonsJobId = jobId;
+  const job = jobs.find(j => j.id === jobId); if (!job) return;
+  document.getElementById('lessonsTitle').textContent = '📝 ' + (job.studentName || job.subject) + ' — 上课记录';
+  document.getElementById('lessonsOverlay').classList.add('active');
+  renderLessonsTable();
+}
+function closeLessonsModal() { document.getElementById('lessonsOverlay').classList.remove('active'); viewingLessonsJobId = null; }
+function renderLessonsTable() {
+  const job = jobs.find(j => j.id === viewingLessonsJobId); if (!job) return;
+  const lessons = job.lessons || [];
+  const summary = document.getElementById('lessonsSummary');
+  const area = document.getElementById('lessonsTableArea');
+  if (lessons.length === 0) {
+    summary.textContent = '还没有上课记录'; area.innerHTML = '<div class="result-empty">点击下方添加第一条上课记录</div>';
+  } else {
+    const sorted = [...lessons].sort((a, b) => b.date.localeCompare(a.date));
+    const totalDur = lessons.reduce((s, l) => s + parseFloat(l.duration) || 0, 0);
+    summary.textContent = `共 ${lessons.length} 次课` + (totalDur > 0 ? ` · 累计 ${totalDur} 小时` : '');
+    area.innerHTML = `<table class="result-table"><thead><tr><th>日期</th><th>上课人</th><th>时长</th><th>备注</th><th>操作</th></tr></thead><tbody>${sorted.map(l => `
+      <tr><td>${l.date}</td><td><strong>${esc(l.teacher)}</strong></td><td>${esc(l.duration)||'—'}</td><td>${esc(l.notes)||'—'}</td><td><button class="btn btn-outline btn-xs btn-danger" onclick="deleteLesson('${l.id}')">删除</button></td></tr>
+    `).join('')}</tbody></table>`;
+  }
+}
+async function addLesson() {
+  const job = jobs.find(j => j.id === viewingLessonsJobId); if (!job) return;
+  const date = document.getElementById('lDate').value;
+  const teacher = document.getElementById('lTeacher').value.trim();
+  if (!date) { toast('请选择日期'); return; }
+  if (!teacher) { toast('请填写上课人'); return; }
+  if (!job.lessons) job.lessons = [];
+  job.lessons.push({
+    id: 's_' + Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),
+    date, teacher,
+    duration: document.getElementById('lDuration').value.trim(),
+    notes: document.getElementById('lNotes').value.trim()
+  });
+  job.updatedAt = now();
+  addLog('编辑', job.id, `上课记录：「${teacher}」${date} ${document.getElementById('lDuration').value.trim()||''}`);
+  ['lDate','lTeacher','lDuration','lNotes'].forEach(k => document.getElementById(k).value='');
+  saveToLS(); await saveToCloud();
+  renderLessonsTable(); renderAll(); toast('上课记录已添加 ✓');
+}
+async function deleteLesson(lessonId) {
+  const job = jobs.find(j => j.id === viewingLessonsJobId); if (!job || !job.lessons) return;
+  const l = job.lessons.find(x => x.id === lessonId); if (!l) return;
+  if (!confirm(`确定删除「${l.teacher}」${l.date} 的上课记录吗？`)) return;
+  job.lessons = job.lessons.filter(x => x.id !== lessonId);
+  job.updatedAt = now();
+  addLog('编辑', job.id, `删除上课记录：「${l.teacher}」${l.date}`);
+  saveToLS(); await saveToCloud();
+  renderLessonsTable(); renderAll(); toast('上课记录已删除');
+}
+
 // ==================== Filter ====================
 function getFilteredJobs() {
   const grade = document.getElementById('filterGrade').value;
@@ -419,7 +494,7 @@ function renderTable() {
     <tr>
       <td><span class="tag tag-grade-${j.gradeLevel}">${j.gradeLevel}</span></td>
       <td><span class="tag tag-status-${j.status}">${j.status}</span></td>
-      <td><strong>${esc(j.subject)}</strong>${(j.results&&j.results.length)?`<span class="result-badge" onclick="openResultsModal('${j.id}')" title="${j.results.length}条成绩">📊${j.results.length}</span>`:''}</td>
+      <td><strong>${esc(j.subject)}</strong>${(j.lessons&&j.lessons.length)?`<span class="result-badge" style="background:var(--green);" onclick="openLessonsModal('${j.id}')" title="${j.lessons.length}次上课">📝${j.lessons.length}</span>`:''}${(j.results&&j.results.length)?`<span class="result-badge" onclick="openResultsModal('${j.id}')" title="${j.results.length}条成绩">📊${j.results.length}</span>`:''}</td>
       <td>${esc(j.studentName)||'—'}</td>
       <td>${esc(j.gradeDetail)||'—'}</td>
       <td>${esc(j.location)||'—'}</td>
@@ -430,6 +505,7 @@ function renderTable() {
       <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(j.notes||'')}">${esc(j.notes)||'—'}</td>
       <td><div class="actions-cell">
         <button class="btn btn-outline btn-xs" onclick="openEditModal('${j.id}')">编辑</button>
+        <button class="btn btn-outline btn-xs" onclick="openLessonsModal('${j.id}')">📝 上课</button>
         <button class="btn btn-outline btn-xs" onclick="openResultsModal('${j.id}')">📊 成绩</button>
         <button class="btn btn-outline btn-xs btn-danger" onclick="deleteJob('${j.id}')">删除</button>
       </div></td>
@@ -558,9 +634,11 @@ async function init() {
 
   document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target===document.getElementById('modalOverlay'))closeModal(); });
   document.getElementById('resultsOverlay').addEventListener('click', e => { if(e.target===document.getElementById('resultsOverlay'))closeResultsModal(); });
+  document.getElementById('lessonsOverlay').addEventListener('click', e => { if(e.target===document.getElementById('lessonsOverlay'))closeLessonsModal(); });
   document.addEventListener('keydown', e => {
     if(e.key==='Escape'){
-      if(document.getElementById('resultsOverlay').classList.contains('active'))closeResultsModal();
+      if(document.getElementById('lessonsOverlay').classList.contains('active'))closeLessonsModal();
+      else if(document.getElementById('resultsOverlay').classList.contains('active'))closeResultsModal();
       else closeModal();
     }
     if(e.ctrlKey&&e.key==='n'){e.preventDefault();openAddModal();}
