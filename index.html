@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家教信息整理</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #f5f5f5; --card: #fff; --text: #1a1a1a; --text2: #666; --border: #e0e0e0;
+    --primary: #4f46e5; --primary-h: #4338ca; --green: #16a34a; --orange: #ea580c;
+    --red: #dc2626; --gray: #9ca3af;
+    --tag-yellow: #fef3c7; --tag-green: #dcfce7; --tag-blue: #dbeafe; --tag-red: #fee2e2;
+    --shadow: 0 1px 3px rgba(0,0,0,.08); --radius: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif; background:var(--bg); color:var(--text); line-height:1.6; min-height:100vh; }
+  .container { max-width:1200px; margin:0 auto; padding:20px; }
+
+  .header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+  .header h1 { font-size:24px; font-weight:700; }
+  .header-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .status-line { font-size:12px; color:var(--text2); }
+
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border:none; border-radius:var(--radius); font-size:14px; cursor:pointer; font-weight:500; transition:all .15s; white-space:nowrap; text-decoration:none; }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-primary:hover { background:var(--primary-h); }
+  .btn-outline { background:var(--card); color:var(--text); border:1px solid var(--border); }
+  .btn-outline:hover { background:#f9fafb; }
+  .btn-sm { padding:5px 10px; font-size:13px; }
+  .btn-xs { padding:3px 8px; font-size:12px; }
+  .btn-danger { color:var(--red); }
+  .btn-danger:hover { background:#fef2f2; }
+
+  .sync-bar { background:var(--card); border-radius:var(--radius); padding:10px 18px; box-shadow:var(--shadow); margin-bottom:16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:13px; color:var(--text2); }
+
+  .stats { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .stat-card { background:var(--card); border-radius:var(--radius); padding:14px 20px; box-shadow:var(--shadow); min-width:100px; }
+  .stat-card .num { font-size:28px; font-weight:700; }
+  .stat-card .label { font-size:12px; color:var(--text2); }
+
+  .filters { background:var(--card); border-radius:var(--radius); padding:14px 18px; box-shadow:var(--shadow); margin-bottom:16px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .filters select, .filters input { padding:7px 12px; border:1px solid var(--border); border-radius:6px; font-size:14px; background:var(--card); }
+  .filters input { flex:1; min-width:160px; }
+  .filters label { font-size:13px; color:var(--text2); }
+
+  .table-wrap { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; padding:12px 14px; font-weight:600; font-size:13px; color:var(--text2); border-bottom:2px solid var(--border); white-space:nowrap; background:#fafafa; }
+  td { padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  tr:hover td { background:#f9fafb; }
+  .tag { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:500; }
+  .tag-grade-小学 { background:var(--tag-green); color:#15803d; }
+  .tag-grade-初中 { background:var(--tag-blue); color:#1d4ed8; }
+  .tag-grade-高中 { background:var(--tag-yellow); color:#b45309; }
+  .tag-status-意向 { background:var(--tag-yellow); color:#b45309; }
+  .tag-status-确定 { background:var(--tag-green); color:#15803d; }
+  .tag-status-已完成 { background:var(--tag-blue); color:#1d4ed8; }
+  .tag-status-已放弃 { background:var(--tag-red); color:#b91c1c; }
+  .actions-cell { display:flex; gap:4px; }
+  .empty-row td { text-align:center; padding:40px; color:var(--gray); }
+
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100; justify-content:center; align-items:flex-start; padding-top:40px; }
+  .modal-overlay.active { display:flex; }
+  .modal { background:var(--card); border-radius:12px; padding:24px; width:90%; max-width:560px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+  .modal h2 { font-size:20px; margin-bottom:18px; }
+  .form-row { display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .form-row > * { flex:1; min-width:120px; }
+  .form-group { margin-bottom:14px; }
+  .form-group label { display:block; font-size:13px; font-weight:600; margin-bottom:4px; color:var(--text2); }
+  .form-group input, .form-group select, .form-group textarea { width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:6px; font-size:14px; }
+  .form-group textarea { resize:vertical; min-height:60px; }
+  .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; }
+
+  /* results */
+  .result-badge { display:inline-block; background:var(--primary); color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; margin-left:6px; cursor:pointer; }
+  .result-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:12px; }
+  .result-table th { background:#f0f0f0; padding:8px 10px; text-align:left; font-weight:600; font-size:12px; }
+  .result-table td { padding:7px 10px; border-bottom:1px solid var(--border); }
+  .result-empty { text-align:center; color:var(--gray); padding:16px; font-size:13px; }
+  .result-summary { font-size:13px; color:var(--text2); margin-bottom:12px; }
+  .result-add-row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
+  .result-add-row .mini-field { display:flex; flex-direction:column; gap:3px; }
+  .result-add-row .mini-field label { font-size:11px; font-weight:600; color:var(--text2); }
+  .result-add-row .mini-field input { padding:5px 8px; border:1px solid var(--border); border-radius:5px; font-size:13px; width:100px; }
+  .result-add-row .mini-field input.wider { width:130px; }
+
+  .panel-toggle { margin-bottom:12px; }
+  .panel { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:16px; display:none; }
+  .panel.open { display:block; }
+  .log-entry { padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; display:flex; gap:10px; }
+  .log-entry:last-child { border-bottom:none; }
+  .log-time { color:var(--gray); white-space:nowrap; min-width:140px; }
+  .log-action { font-weight:600; min-width:50px; }
+  .log-action.创建 { color:var(--green); }
+  .log-action.编辑 { color:var(--primary); }
+  .log-action.删除 { color:var(--red); }
+  .log-action.同步 { color:var(--orange); }
+
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#1a1a1a; color:#fff; padding:10px 24px; border-radius:20px; font-size:14px; z-index:200; opacity:0; transition:opacity .3s; pointer-events:none; }
+  .toast.show { opacity:1; }
+
+  @media (max-width:768px) {
+    .header { flex-direction:column; align-items:flex-start; }
+    .filters, .sync-bar { flex-direction:column; align-items:stretch; }
+    .stats { gap:8px; }
+    .stat-card { padding:10px 14px; }
+    .stat-card .num { font-size:22px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div>
+      <h1>📚 家教信息整理</h1>
+      <div class="status-line">
+        <span id="syncDot" style="color:var(--green);">●</span>
+        <span id="syncLabel">云端同步中</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-primary btn-sm" onclick="openAddModal()">＋ 新单子</button>
+    </div>
+  </div>
+
+  <div class="sync-bar">
+    <span>☁️ 所有设备实时同步 · 手机/电脑/平板都能用</span>
+    <button class="btn btn-outline btn-sm" onclick="loadFromCloud()" style="margin-left:auto;">🔄 刷新</button>
+    <button class="btn btn-outline btn-sm" onclick="exportJSON()">📥 导出备份</button>
+    <button class="btn btn-outline btn-sm" onclick="importJSON()">📤 导入恢复</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="filters">
+    <label>学段：</label>
+    <select id="filterGrade" onchange="renderAll()">
+      <option value="all">全部</option><option value="小学">小学</option><option value="初中">初中</option><option value="高中">高中</option>
+    </select>
+    <label>状态：</label>
+    <select id="filterStatus" onchange="renderAll()">
+      <option value="all">全部</option><option value="意向">意向</option><option value="确定">确定</option><option value="已完成">已完成</option><option value="已放弃">已放弃</option>
+    </select>
+    <input type="text" id="filterSearch" placeholder="🔍 搜索（科目、姓名、地点、负责人、备注）" oninput="renderAll()">
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>学段</th><th>状态</th><th>科目</th><th>学生</th><th>年级</th>
+          <th>地点</th><th>频率</th><th>课时费</th><th>联系方式</th><th>负责人</th>
+          <th>备注</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="jobTableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="panel-toggle">
+    <button class="btn btn-outline btn-sm" onclick="togglePanel()" id="btnLogToggle">📋 变更日志 ▸</button>
+  </div>
+  <div class="panel" id="changeLogPanel"></div>
+
+</div>
+
+<!-- Main Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">新增家教单子</h2>
+    <div class="form-row">
+      <div class="form-group"><label>学段 *</label><select id="formGrade"><option value="">请选择</option><option value="小学">小学</option><option value="初中">初中</option><option value="高中">高中</option></select></div>
+      <div class="form-group"><label>状态 *</label><select id="formStatus"><option value="意向">意向</option><option value="确定">确定</option><option value="已完成">已完成</option><option value="已放弃">已放弃</option></select></div>
+      <div class="form-group"><label>科目 *</label><input type="text" id="formSubject" placeholder="如：数学、英语、物理"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>学生姓名</label><input type="text" id="formName" placeholder="可选"></div>
+      <div class="form-group"><label>年级</label><input type="text" id="formGradeDetail" placeholder="如：初一、高二"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>上课地点</label><input type="text" id="formLocation" placeholder="如：鼓楼区 xx小区"></div>
+      <div class="form-group"><label>频率</label><input type="text" id="formFrequency" placeholder="如：每周2次、周末"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>课时费</label><input type="text" id="formFee" placeholder="如：150/小时"></div>
+      <div class="form-group"><label>家长联系方式</label><input type="text" id="formContact" placeholder="手机号 或 微信"></div>
+      <div class="form-group"><label>负责人</label><input type="text" id="formOwner" placeholder="谁在负责这个单子"></div>
+    </div>
+    <div class="form-group"><label>备注</label><textarea id="formNotes" placeholder="补充信息……"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="submitForm()" id="btnSubmit">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Results Modal -->
+<div class="modal-overlay" id="resultsOverlay">
+  <div class="modal" style="max-width:680px;">
+    <h2 id="resultsTitle">📊 成绩记录</h2>
+    <div class="result-summary" id="resultsSummary"></div>
+    <div id="resultsTableArea"></div>
+    <div class="result-add-row">
+      <div class="mini-field"><label>考试日期 *</label><input type="date" id="rDate"></div>
+      <div class="mini-field"><label>考试名称 *</label><input type="text" id="rExam" placeholder="月考/期中/期末" class="wider"></div>
+      <div class="mini-field"><label>科目</label><input type="text" id="rSubject" placeholder="如：数学"></div>
+      <div class="mini-field"><label>成绩</label><input type="text" id="rScore" placeholder="如：92/100"></div>
+      <div class="mini-field"><label>备注</label><input type="text" id="rNotes" placeholder="排名、进步等"></div>
+      <button class="btn btn-primary btn-sm" onclick="addResult()" style="align-self:flex-end;">＋ 添加</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeResultsModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ==================== Supabase Config ====================
+const SB_URL = 'https://mcksrcxvkfuiwdaddxwk.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ja3NyY3h2a2Z1aXdkYWRkeHdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDI2MDQsImV4cCI6MjA5ODExODYwNH0.BkXgDMNFQ8yQtj8b8bqIVulyYWT3q_v-KA15OpBMzsY';
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+// ==================== State ====================
+let jobs = [];
+let changeLog = [];
+let editingJobId = null;
+let toastTimer = null;
+let dataHash = '';
+
+// ==================== Toast ====================
+function toast(msg, dur) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur || 2200);
+}
+
+// ==================== ID / Time ====================
+function genId() { return 'j_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7); }
+function now() { return new Date().toISOString(); }
+
+// ==================== Cloud Load / Save ====================
+async function loadFromCloud() {
+  try {
+    const { data, error } = await sb.from('tutoring_data').select('data').eq('id', 1).single();
+    if (error) throw error;
+    if (!data) return false;
+    const d = data.data;
+    const newHash = JSON.stringify(d.jobs || []);
+    if (newHash === dataHash && jobs.length > 0) return false;
+    jobs = d.jobs || [];
+    changeLog = d.changeLog || [];
+    dataHash = newHash;
+    saveToLS();
+    return true;
+  } catch (e) {
+    console.error('加载失败:', e);
+    return false;
+  }
+}
+
+async function saveToCloud() {
+  try {
+    const payload = { data: { jobs, changeLog }, updated_at: new Date().toISOString() };
+    const { error } = await sb.from('tutoring_data').update(payload).eq('id', 1);
+    if (error) throw error;
+    dataHash = JSON.stringify(jobs);
+  } catch (e) {
+    console.error('保存失败:', e);
+    toast('⚠️ 保存失败，请检查网络');
+  }
+}
+
+// ==================== LocalStorage (offline cache) ====================
+function loadFromLS() {
+  try {
+    const raw = localStorage.getItem('tutoring_data');
+    if (raw) { const d = JSON.parse(raw); jobs = d.jobs || []; changeLog = d.changeLog || []; }
+  } catch { /* */ }
+}
+function saveToLS() {
+  try { localStorage.setItem('tutoring_data', JSON.stringify({ jobs, changeLog })); } catch { /* */ }
+}
+
+// ==================== Change Log ====================
+function addLog(action, jobId, detail) {
+  changeLog.unshift({ id: 'l_' + Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7), action, jobId, detail, timestamp: now() });
+  if (changeLog.length > 500) changeLog.length = 500;
+}
+
+// ==================== CRUD ====================
+async function addJob(data) {
+  const job = { ...data, id: genId(), createdAt: now(), updatedAt: now(), results: [] };
+  jobs.unshift(job);
+  addLog('创建', job.id, `新建「${job.subject}」${job.gradeLevel} ${job.studentName||'未填姓名'}`);
+  saveToLS(); await saveToCloud();
+}
+
+async function updateJob(id, updates) {
+  const idx = jobs.findIndex(j => j.id === id); if (idx === -1) return;
+  const old = jobs[idx];
+  const changes = [];
+  for (const key of Object.keys(updates)) {
+    if ((old[key]||'') !== (updates[key]||'')) changes.push(`${key}: "${old[key]||''}" → "${updates[key]||''}"`);
+  }
+  if (changes.length === 0) return;
+  jobs[idx] = { ...old, ...updates, updatedAt: now(), results: old.results || [] };
+  addLog('编辑', id, changes.join('；'));
+  saveToLS(); await saveToCloud();
+}
+
+async function deleteJob(id) {
+  const job = jobs.find(j => j.id === id); if (!job) return;
+  if (!confirm(`确定要删除「${job.subject}」- ${job.studentName||'未填姓名'} 的单子吗？`)) return;
+  jobs = jobs.filter(j => j.id !== id);
+  addLog('删除', id, `删除「${job.subject}」${job.gradeLevel} ${job.studentName||'未填姓名'}`);
+  saveToLS(); await saveToCloud();
+  renderAll(); toast('已删除');
+}
+
+// ==================== Results ====================
+let viewingResultsJobId = null;
+function openResultsModal(jobId) {
+  viewingResultsJobId = jobId;
+  const job = jobs.find(j => j.id === jobId); if (!job) return;
+  document.getElementById('resultsTitle').textContent = '📊 ' + (job.studentName || job.subject) + ' — 成绩记录';
+  document.getElementById('resultsOverlay').classList.add('active');
+  renderResultsTable();
+}
+function closeResultsModal() { document.getElementById('resultsOverlay').classList.remove('active'); viewingResultsJobId = null; }
+function renderResultsTable() {
+  const job = jobs.find(j => j.id === viewingResultsJobId); if (!job) return;
+  const results = job.results || [];
+  const summary = document.getElementById('resultsSummary');
+  const area = document.getElementById('resultsTableArea');
+  if (results.length === 0) {
+    summary.textContent = '还没有成绩记录'; area.innerHTML = '<div class="result-empty">点击下方添加第一条成绩</div>';
+  } else {
+    const sorted = [...results].sort((a, b) => b.date.localeCompare(a.date));
+    summary.textContent = `共 ${results.length} 条记录`;
+    area.innerHTML = `<table class="result-table"><thead><tr><th>日期</th><th>考试</th><th>科目</th><th>成绩</th><th>备注</th><th>操作</th></tr></thead><tbody>${sorted.map(r => `
+      <tr><td>${r.date}</td><td>${esc(r.examName)}</td><td>${esc(r.subject)||'—'}</td><td><strong>${esc(r.score)||'—'}</strong></td><td>${esc(r.notes)||'—'}</td><td><button class="btn btn-outline btn-xs btn-danger" onclick="deleteResult('${r.id}')">删除</button></td></tr>
+    `).join('')}</tbody></table>`;
+  }
+}
+async function addResult() {
+  const job = jobs.find(j => j.id === viewingResultsJobId); if (!job) return;
+  const date = document.getElementById('rDate').value;
+  const examName = document.getElementById('rExam').value.trim();
+  if (!date) { toast('请选择考试日期'); return; }
+  if (!examName) { toast('请填写考试名称'); return; }
+  if (!job.results) job.results = [];
+  job.results.push({
+    id: 'r_' + Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),
+    date, examName,
+    subject: document.getElementById('rSubject').value.trim(),
+    score: document.getElementById('rScore').value.trim(),
+    notes: document.getElementById('rNotes').value.trim()
+  });
+  job.updatedAt = now();
+  addLog('编辑', job.id, `添加成绩：「${examName}」${job.results[job.results.length-1].subject || ''} ${job.results[job.results.length-1].score || ''}`);
+  ['rDate','rExam','rSubject','rScore','rNotes'].forEach(k => document.getElementById(k).value='');
+  saveToLS(); await saveToCloud();
+  renderResultsTable(); renderAll(); toast('成绩已添加 ✓');
+}
+async function deleteResult(resultId) {
+  const job = jobs.find(j => j.id === viewingResultsJobId); if (!job || !job.results) return;
+  const r = job.results.find(x => x.id === resultId); if (!r) return;
+  if (!confirm(`确定删除「${r.examName}」${r.date} 的成绩吗？`)) return;
+  job.results = job.results.filter(x => x.id !== resultId);
+  job.updatedAt = now();
+  addLog('编辑', job.id, `删除成绩：「${r.examName}」${r.date}`);
+  saveToLS(); await saveToCloud();
+  renderResultsTable(); renderAll(); toast('成绩已删除');
+}
+
+// ==================== Filter ====================
+function getFilteredJobs() {
+  const grade = document.getElementById('filterGrade').value;
+  const status = document.getElementById('filterStatus').value;
+  const search = document.getElementById('filterSearch').value.toLowerCase().trim();
+  return jobs.filter(j => {
+    if (grade !== 'all' && j.gradeLevel !== grade) return false;
+    if (status !== 'all' && j.status !== status) return false;
+    if (search) {
+      const h = [j.subject, j.studentName, j.location, j.notes, j.contact, j.owner, j.gradeDetail].join(' ').toLowerCase();
+      if (!h.includes(search)) return false;
+    }
+    return true;
+  });
+}
+
+// ==================== Render ====================
+function renderAll() { renderStats(); renderTable(); }
+
+function renderStats() {
+  const t = jobs.length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="num">${t}</div><div class="label">全部单子</div></div>
+    <div class="stat-card"><div class="num">${jobs.filter(j=>j.status==='意向').length}</div><div class="label">🟡 意向</div></div>
+    <div class="stat-card"><div class="num">${jobs.filter(j=>j.status==='确定').length}</div><div class="label">🟢 确定</div></div>
+    <div class="stat-card"><div class="num">${jobs.filter(j=>j.status==='已完成').length}</div><div class="label">🔵 已完成</div></div>
+    <div class="stat-card"><div class="num">${jobs.filter(j=>j.status==='已放弃').length}</div><div class="label">🔴 已放弃</div></div>
+  `;
+}
+
+function renderTable() {
+  const filtered = getFilteredJobs();
+  const tbody = document.getElementById('jobTableBody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="12">${jobs.length===0?'还没有家教单子，点击「＋ 新单子」开始记录':'没有匹配的单子'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(j => `
+    <tr>
+      <td><span class="tag tag-grade-${j.gradeLevel}">${j.gradeLevel}</span></td>
+      <td><span class="tag tag-status-${j.status}">${j.status}</span></td>
+      <td><strong>${esc(j.subject)}</strong>${(j.results&&j.results.length)?`<span class="result-badge" onclick="openResultsModal('${j.id}')" title="${j.results.length}条成绩">📊${j.results.length}</span>`:''}</td>
+      <td>${esc(j.studentName)||'—'}</td>
+      <td>${esc(j.gradeDetail)||'—'}</td>
+      <td>${esc(j.location)||'—'}</td>
+      <td>${esc(j.frequency)||'—'}</td>
+      <td>${esc(j.fee)||'—'}</td>
+      <td>${esc(j.contact)||'—'}</td>
+      <td>${esc(j.owner)||'—'}</td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(j.notes||'')}">${esc(j.notes)||'—'}</td>
+      <td><div class="actions-cell">
+        <button class="btn btn-outline btn-xs" onclick="openEditModal('${j.id}')">编辑</button>
+        <button class="btn btn-outline btn-xs" onclick="openResultsModal('${j.id}')">📊 成绩</button>
+        <button class="btn btn-outline btn-xs btn-danger" onclick="deleteJob('${j.id}')">删除</button>
+      </div></td>
+    </tr>
+  `).join('');
+}
+
+function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+function escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderChangeLog() {
+  const panel = document.getElementById('changeLogPanel');
+  if (changeLog.length===0) { panel.innerHTML='<div style="color:var(--gray);text-align:center;padding:20px;">暂无变更记录</div>'; return; }
+  panel.innerHTML = changeLog.slice(0,100).map(l=>`
+    <div class="log-entry"><span class="log-time">${new Date(l.timestamp).toLocaleString('zh-CN')}</span><span class="log-action ${l.action}">${l.action}</span><span class="log-detail">${esc(l.detail)}</span></div>
+  `).join('');
+  if (changeLog.length>100) panel.innerHTML+=`<div style="color:var(--gray);text-align:center;padding:10px;">… 仅显示最近 100 条，共 ${changeLog.length} 条</div>`;
+}
+
+function togglePanel() {
+  const panel=document.getElementById('changeLogPanel'), btn=document.getElementById('btnLogToggle');
+  const open=panel.classList.toggle('open');
+  btn.textContent=open?'📋 变更日志 ▾':'📋 变更日志 ▸';
+  if (open) renderChangeLog();
+}
+
+// ==================== Modal ====================
+function openAddModal() {
+  editingJobId=null;
+  document.getElementById('modalTitle').textContent='新增家教单子';
+  document.getElementById('btnSubmit').textContent='保存';
+  clearForm(); document.getElementById('modalOverlay').classList.add('active');
+}
+function openEditModal(id) {
+  const job=jobs.find(j=>j.id===id); if(!job)return;
+  editingJobId=id;
+  document.getElementById('modalTitle').textContent='编辑家教单子';
+  document.getElementById('btnSubmit').textContent='更新';
+  setF('formGrade',job.gradeLevel); setF('formStatus',job.status);
+  setF('formSubject',job.subject); setF('formName',job.studentName);
+  setF('formGradeDetail',job.gradeDetail); setF('formLocation',job.location);
+  setF('formFrequency',job.frequency); setF('formFee',job.fee);
+  setF('formContact',job.contact); setF('formOwner',job.owner);
+  setF('formNotes',job.notes);
+  document.getElementById('modalOverlay').classList.add('active');
+}
+function setF(id,val) { document.getElementById(id).value=val||''; }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); editingJobId=null; clearForm(); }
+function clearForm() {
+  document.getElementById('formGrade').value=''; document.getElementById('formStatus').value='意向';
+  ['Subject','Name','GradeDetail','Location','Frequency','Fee','Contact','Owner','Notes'].forEach(k=>{document.getElementById('form'+k).value='';});
+}
+async function submitForm() {
+  const grade=document.getElementById('formGrade').value, subject=document.getElementById('formSubject').value.trim();
+  if(!grade){toast('请选择学段');return;}
+  if(!subject){toast('请填写科目');return;}
+  const data={
+    gradeLevel:grade, status:document.getElementById('formStatus').value, subject,
+    studentName:document.getElementById('formName').value.trim(),
+    gradeDetail:document.getElementById('formGradeDetail').value.trim(),
+    location:document.getElementById('formLocation').value.trim(),
+    frequency:document.getElementById('formFrequency').value.trim(),
+    fee:document.getElementById('formFee').value.trim(),
+    contact:document.getElementById('formContact').value.trim(),
+    owner:document.getElementById('formOwner').value.trim(),
+    notes:document.getElementById('formNotes').value.trim(),
+  };
+  if(editingJobId){await updateJob(editingJobId,data);toast('已更新 ✓');}
+  else{await addJob(data);toast('已添加 ✓');}
+  closeModal(); renderAll();
+}
+
+// ==================== Export / Import ====================
+function exportJSON() {
+  const data=JSON.stringify({jobs,changeLog},null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`家教数据_备份_${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('备份文件已下载 ✓');
+}
+function importJSON() {
+  const input=document.createElement('input');
+  input.type='file'; input.accept='.json';
+  input.onchange=async(e)=>{
+    const file=e.target.files[0]; if(!file)return;
+    try{
+      const text=await file.text(); const data=JSON.parse(text);
+      if(!data.jobs||!Array.isArray(data.jobs))throw new Error('格式不符');
+      if(jobs.length>0&&!confirm(`当前有 ${jobs.length} 条记录。导入将覆盖，确定继续？`))return;
+      jobs=data.jobs; changeLog=data.changeLog||[];
+      addLog('编辑','import',`从备份导入 — ${jobs.length} 条单子`);
+      saveToLS(); await saveToCloud(); renderAll();
+      toast(`导入成功 — ${jobs.length} 条单子 ✓`);
+    }catch(err){alert('导入失败：'+err.message);}
+  };
+  input.click();
+}
+
+// ==================== Auto-refresh ====================
+let refreshTimer = null;
+function startAutoRefresh() {
+  refreshTimer = setInterval(async () => {
+    const changed = await loadFromCloud();
+    if (changed) {
+      saveToLS();
+      renderAll();
+      addLog('同步', 'auto', '检测到云端更新，已自动刷新');
+    }
+  }, 10000); // 10s for near-real-time
+}
+
+// ==================== Init ====================
+async function init() {
+  loadFromLS();
+  renderAll();
+
+  const ok = await loadFromCloud();
+  if (ok) {
+    saveToLS();
+    renderAll();
+  }
+
+  startAutoRefresh();
+
+  document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target===document.getElementById('modalOverlay'))closeModal(); });
+  document.getElementById('resultsOverlay').addEventListener('click', e => { if(e.target===document.getElementById('resultsOverlay'))closeResultsModal(); });
+  document.addEventListener('keydown', e => {
+    if(e.key==='Escape'){
+      if(document.getElementById('resultsOverlay').classList.contains('active'))closeResultsModal();
+      else closeModal();
+    }
+    if(e.ctrlKey&&e.key==='n'){e.preventDefault();openAddModal();}
+  });
+}
+init();
+</script>
+</body>
+</html>
